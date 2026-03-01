@@ -37,6 +37,21 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             content         TEXT NOT NULL,
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (conversation_id) REFERENCES conversations (conversation_id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS folders (
+            folder_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            path        TEXT NOT NULL UNIQUE,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS documents (
+            document_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id    INTEGER NOT NULL,
+            path         TEXT NOT NULL UNIQUE,
+            raw_text     TEXT NOT NULL,
+            extracted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (folder_id) REFERENCES folders (folder_id) ON DELETE CASCADE
         );",
     )?;
     Ok(())

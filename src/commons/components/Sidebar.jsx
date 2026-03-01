@@ -15,6 +15,9 @@ export default function Sidebar() {
         <Link className="sidebar-button" activeClassName="is-active" to="/chat">
           Chat
         </Link>
+        <Link className="sidebar-button" activeClassName="is-active" to="/settings">
+          Settings
+        </Link>
       </div>
     </div>
   );

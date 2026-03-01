@@ -5,6 +5,7 @@ import Sidebar from './commons/components/Sidebar.jsx';
 import ChatHistorySidebar from './features/chat/ChatHistorySidebar.jsx';
 import HomePage from './features/home/HomePage.jsx';
 import ChatPage from './features/chat/ChatPage.jsx';
+import SettingsPage from './features/settings/SettingsPage.jsx';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/" component={HomePage} />
           <Route path="/chat" component={ChatPage} />
           <Route path="/chat/:conversationId" component={ChatPage} />
+          <Route path="/settings" component={SettingsPage} />
         </Router>
       </div>
     </div>

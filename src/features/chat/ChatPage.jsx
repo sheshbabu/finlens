@@ -3,7 +3,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { marked } from 'marked';
 import Button from '../../commons/components/Button.jsx';
-import { ChevronDownIcon, ChevronRightIcon } from '../../commons/components/Icon.jsx';
+import { ChevronDownIcon, ChevronRightIcon, SettingsIcon } from '../../commons/components/Icon.jsx';
+import { ModalBackdrop, ModalContainer, ModalHeader, ModalContent } from '../../commons/components/Modal.jsx';
+import SegmentedControl from '../../commons/components/SegmentedControl.jsx';
 import { navigateTo } from '../../commons/components/Link.jsx';
 import './ChatPage.css';
 
@@ -77,6 +79,8 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
+  const [isThinkingEnabled, setIsThinkingEnabled] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -153,7 +157,7 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
     });
 
     try {
-      await invoke('chat', { conversationId: convId });
+      await invoke('chat', { conversationId: convId, think: isThinkingEnabled });
     } catch (err) {
       setMessages(prev => {
         const updated = [...prev];
@@ -165,6 +169,14 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
       unlistenChunk();
       unlistenDone();
     }
+  }
+
+  function handleSettingsClick() {
+    setIsSettingsOpen(true);
+  }
+
+  function handleSettingsClose() {
+    setIsSettingsOpen(false);
   }
 
   function handleKeyDown(e) {
@@ -228,8 +240,30 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
 
   const isSendDisabled = !input.trim() || isLoading;
 
+  let settingsModal = null;
+  if (isSettingsOpen === true) {
+    settingsModal = (
+      <ModalBackdrop onClose={handleSettingsClose}>
+        <ModalContainer>
+          <ModalHeader title="Chat Settings" onClose={handleSettingsClose} />
+          <ModalContent>
+            <div className="chat-settings-row">
+              <span className="chat-settings-label">Thinking</span>
+              <SegmentedControl
+                options={[{ label: 'On', value: true }, { label: 'Off', value: false }]}
+                value={isThinkingEnabled}
+                onChange={setIsThinkingEnabled}
+              />
+            </div>
+          </ModalContent>
+        </ModalContainer>
+      </ModalBackdrop>
+    );
+  }
+
   return (
     <div className="chat-page">
+      {settingsModal}
       <div className="chat-messages">
         {emptyState}
         {messageItems}
@@ -237,6 +271,9 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
       </div>
 
       <form className="chat-input-row" onSubmit={handleSubmit}>
+        <div className="chat-input-settings" onClick={handleSettingsClick}>
+          <SettingsIcon />
+        </div>
         <textarea
           className="chat-textarea"
           placeholder="Message (Enter to send, Shift+Enter for newline)"

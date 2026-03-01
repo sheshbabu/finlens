@@ -3,8 +3,10 @@ mod db;
 use futures_util::StreamExt;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
+use walkdir::WalkDir;
 
 struct DbState(Mutex<rusqlite::Connection>);
 
@@ -32,6 +34,27 @@ struct OllamaChunkMessage {
 struct OllamaChunk {
     message: OllamaChunkMessage,
     done: bool,
+}
+
+#[derive(Serialize)]
+struct Folder {
+    folder_id: i64,
+    path: String,
+    created_at: String,
+}
+
+#[derive(Serialize)]
+struct ExtractionResult {
+    found: usize,
+    extracted: usize,
+    skipped: usize,
+    errors: usize,
+}
+
+#[derive(Serialize, Clone)]
+struct ExtractProgressEvent {
+    path: String,
+    status: String, // "extracting" | "done" | "skipped" | "error"
 }
 
 #[derive(Serialize)]
@@ -159,6 +182,7 @@ async fn chat(
     window: tauri::Window,
     state: tauri::State<'_, DbState>,
     conversation_id: i64,
+    think: bool,
 ) -> Result<(), String> {
     let history: Vec<OllamaMessage> = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
@@ -186,7 +210,7 @@ async fn chat(
         model: "qwen3.5:35b-a3b".to_string(),
         messages: history,
         stream: true,
-        think: true,
+        think,
     };
 
     let response = client
@@ -247,10 +271,198 @@ async fn chat(
     Ok(())
 }
 
+#[tauri::command]
+fn get_folders(state: tauri::State<DbState>) -> Result<Vec<Folder>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT folder_id, path, created_at FROM folders ORDER BY created_at ASC")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(Folder {
+                folder_id: row.get(0)?,
+                path: row.get(1)?,
+                created_at: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let folders = rows.filter_map(|r| r.ok()).collect::<Vec<_>>();
+    Ok(folders)
+}
+
+#[tauri::command]
+async fn pick_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let folder = app.dialog().file().blocking_pick_folder();
+    let path = folder.map(|f| f.to_string());
+    Ok(path)
+}
+
+#[tauri::command]
+fn add_folder(state: tauri::State<DbState>, path: String) -> Result<i64, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("INSERT INTO folders (path) VALUES (?1)", params![path])
+        .map_err(|e| e.to_string())?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[tauri::command]
+fn remove_folder(state: tauri::State<DbState>, folder_id: i64) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM folders WHERE folder_id = ?1",
+        params![folder_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn extract_documents(
+    window: tauri::Window,
+    state: tauri::State<DbState>,
+) -> Result<ExtractionResult, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("SELECT folder_id, path FROM folders")
+        .map_err(|e| e.to_string())?;
+    let folder_rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|e| e.to_string())?;
+    let folders: Vec<(i64, String)> = folder_rows.filter_map(|r| r.ok()).collect();
+
+    let mut existing_stmt = conn
+        .prepare("SELECT path FROM documents")
+        .map_err(|e| e.to_string())?;
+    let existing_rows = existing_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let existing_paths: HashSet<String> = existing_rows.filter_map(|r| r.ok()).collect();
+
+    let mut found = 0usize;
+    let mut extracted = 0usize;
+    let mut skipped = 0usize;
+    let mut errors = 0usize;
+
+    for (folder_id, folder_path) in &folders {
+        for entry in WalkDir::new(folder_path)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if ext != "pdf" {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            found += 1;
+            let path_str = path.to_string_lossy().to_string();
+
+            if existing_paths.contains(&path_str) {
+                skipped += 1;
+                let _ = window.emit(
+                    "extract-progress",
+                    ExtractProgressEvent {
+                        path: path_str,
+                        status: "skipped".to_string(),
+                    },
+                );
+                continue;
+            }
+
+            let _ = window.emit(
+                "extract-progress",
+                ExtractProgressEvent {
+                    path: path_str.clone(),
+                    status: "extracting".to_string(),
+                },
+            );
+
+            let extract_result: Result<String, String> = std::process::Command::new("pdftotext")
+                .arg("-layout")
+                .arg(&path_str)
+                .arg("-")
+                .output()
+                .map_err(|e| e.to_string())
+                .and_then(|out| {
+                    if out.status.success() {
+                        String::from_utf8(out.stdout).map_err(|e| e.to_string())
+                    } else {
+                        Err(String::from_utf8_lossy(&out.stderr).to_string())
+                    }
+                });
+
+            match extract_result {
+                Ok(text) => {
+                    eprintln!("[extract] {} chars from {}", text.len(), path_str);
+                    match conn.execute(
+                        "INSERT INTO documents (folder_id, path, raw_text) VALUES (?1, ?2, ?3)",
+                        params![folder_id, path_str.clone(), text],
+                    ) {
+                        Ok(_) => {
+                            extracted += 1;
+                            let _ = window.emit(
+                                "extract-progress",
+                                ExtractProgressEvent {
+                                    path: path_str,
+                                    status: "done".to_string(),
+                                },
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[extract] db insert error for {}: {}", path_str, e);
+                            errors += 1;
+                            let _ = window.emit(
+                                "extract-progress",
+                                ExtractProgressEvent {
+                                    path: path_str,
+                                    status: "error".to_string(),
+                                },
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[extract] error for {}: {}", path_str, e);
+                    errors += 1;
+                    let _ = window.emit(
+                        "extract-progress",
+                        ExtractProgressEvent {
+                            path: path_str,
+                            status: "error".to_string(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(ExtractionResult {
+        found,
+        extracted,
+        skipped,
+        errors,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let path = db::get_db_path(app.handle());
             let conn = db::open(&path).expect("failed to open db");
@@ -265,6 +477,11 @@ pub fn run() {
             get_messages,
             save_message,
             delete_conversation,
+            get_folders,
+            pick_folder,
+            add_folder,
+            remove_folder,
+            extract_documents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

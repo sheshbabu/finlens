@@ -1,0 +1,28 @@
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.form-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.form-section-title {
+  font: var(--p1);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.form-section-description {
+  font: var(--sm);
+  color: var(--text-secondary);
+}
+
+.form-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}

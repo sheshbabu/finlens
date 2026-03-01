@@ -83,12 +83,12 @@
     ul,
     ol {
         padding-left: 20px;
-        margin: -30px 0;
+        /* margin: -30px 0; */
     }
 
     li {
         padding: 3px 0;
-        margin: -10px 0;
+        /* margin: -10px 0; */
 
         p {
             margin: 0;
@@ -200,6 +200,40 @@
     gap: var(--spacing-2);
     padding: var(--spacing-4);
     background-color: var(--bg-primary);
+}
+
+.chat-input-settings {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    color: var(--neutral-400);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color var(--transition-normal), background-color var(--transition-normal);
+    padding: 8px;
+    border: 1px solid var(--neutral-100);
+
+    svg.lucide {
+        width: 18px;
+        height: 18px;
+    }
+
+    &:hover {
+        color: var(--neutral-700);
+        background-color: var(--neutral-100);
+    }
+}
+
+.chat-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-6);
+}
+
+.chat-settings-label {
+    font: var(--sm);
+    color: var(--text-primary);
 }
 
 .chat-textarea {
