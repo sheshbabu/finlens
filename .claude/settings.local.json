@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo fetch:*)",
+      "Bash(cargo check:*)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
