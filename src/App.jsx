@@ -23,10 +23,15 @@ export default function App() {
 
   const isChat = currentPath === '/chat' || currentPath.startsWith('/chat/');
 
+  let chatHistorySidebar = null;
+  if (isChat === true) {
+    chatHistorySidebar = <ChatHistorySidebar />;
+  }
+
   return (
     <div className="app-layout">
       <Sidebar />
-      {isChat && <ChatHistorySidebar />}
+      {chatHistorySidebar}
       <div className="main-content">
         <Router>
           <Route path="/" component={HomePage} />

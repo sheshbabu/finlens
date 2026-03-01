@@ -25,22 +25,47 @@ function ThinkingBlock({ content, isStreaming }) {
     }
   }, [content, isStreaming]);
 
-  const formatElapsed = (s) => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+  function formatElapsed(s) {
+    if (s < 60) {
+      return `${s}s`;
+    }
+    return `${Math.floor(s / 60)}m ${s % 60}s`;
+  }
+
+  let chevron = <ChevronRightIcon />;
+  if (isOpen === true) {
+    chevron = <ChevronDownIcon />;
+  }
+
+  let summaryLabel = 'Thought process';
+  if (isStreaming === true) {
+    summaryLabel = 'Thinking…';
+  }
+
+  let elapsedDisplay = null;
+  if (elapsed > 0) {
+    elapsedDisplay = <span className="chat-thinking-elapsed">{formatElapsed(elapsed)}</span>;
+  }
+
+  let thinkingContent = null;
+  if (isOpen === true) {
+    thinkingContent = (
+      <div
+        className="chat-thinking-content chat-message-markdown"
+        ref={contentRef}
+        dangerouslySetInnerHTML={{ __html: marked.parse(content) }}
+      />
+    );
+  }
 
   return (
     <div className="chat-thinking-block">
       <div className="chat-thinking-summary" onClick={() => setIsOpen(o => !o)}>
-        {isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
-        <span>{isStreaming ? 'Thinking…' : 'Thought process'}</span>
-        {elapsed > 0 && <span className="chat-thinking-elapsed">{formatElapsed(elapsed)}</span>}
+        {chevron}
+        <span>{summaryLabel}</span>
+        {elapsedDisplay}
       </div>
-      {isOpen && (
-        <div
-          className="chat-thinking-content chat-message-markdown"
-          ref={contentRef}
-          dangerouslySetInnerHTML={{ __html: marked.parse(content) }}
-        />
-      )}
+      {thinkingContent}
     </div>
   );
 }
@@ -54,7 +79,6 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
   const messagesEndRef = useRef(null);
 
-  // Load messages when navigating to an existing conversation
   useEffect(() => {
     setActiveConversationId(conversationId);
     if (conversationId) {
@@ -87,18 +111,15 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
     setInput('');
     setIsLoading(true);
 
-    // Create conversation on first message
     let convId = activeConversationId;
     if (!convId) {
       const title = text.slice(0, 60);
       convId = await invoke('create_conversation', { title });
       setActiveConversationId(convId);
       navigateTo(`/chat/${convId}`);
-      // Trigger sidebar refresh
       window.dispatchEvent(new CustomEvent('conversation-created'));
     }
 
-    // Save user message to DB
     await invoke('save_message', { conversationId: convId, role: 'user', content: text });
 
     setMessages(prev => [...prev, { role: 'user', content: text }]);
@@ -153,41 +174,65 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
     }
   }
 
-  const isLastMessage = (i) => i === messages.length - 1;
+  function isLastMessage(i) {
+    return i === messages.length - 1;
+  }
+
+  let emptyState = null;
+  if (messages.length === 0) {
+    emptyState = <div className="chat-empty">Start a conversation</div>;
+  }
+
+  const messageItems = messages.map((msg, i) => {
+    let thinkingBlock = null;
+    const hasThinking = msg.role === 'assistant' && msg.thinking !== undefined && msg.thinking !== '';
+    if (hasThinking === true) {
+      const isThinkingStreaming = isLoading === true && isLastMessage(i) === true && msg.content === '';
+      thinkingBlock = <ThinkingBlock content={msg.thinking} isStreaming={isThinkingStreaming} />;
+    }
+
+    let messageBlock = null;
+    if (msg.content !== '') {
+      let messageContent = null;
+      if (msg.role === 'assistant') {
+        messageContent = (
+          <div
+            className="chat-message-content chat-message-markdown"
+            dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
+          />
+        );
+      } else {
+        messageContent = <div className="chat-message-content">{msg.content}</div>;
+      }
+
+      let cursor = null;
+      if (isLoading === true && isLastMessage(i) === true && msg.role === 'assistant') {
+        cursor = <span className="chat-cursor" />;
+      }
+
+      messageBlock = (
+        <div className={`chat-message chat-message-${msg.role}`}>
+          {messageContent}
+          {cursor}
+        </div>
+      );
+    }
+
+    return (
+      <div key={i} className="chat-message-group">
+        {thinkingBlock}
+        {messageBlock}
+      </div>
+    );
+  });
+
+  const isSendDisabled = !input.trim() || isLoading;
 
   return (
     <div className="chat-page">
       <div className="chat-messages">
-        {messages.length === 0 && (
-          <div className="chat-empty">Start a conversation</div>
-        )}
-        {messages.map((msg, i) => (
-          <div key={i} className="chat-message-group">
-            {msg.role === 'assistant' && msg.thinking !== undefined && msg.thinking !== '' && (
-              <ThinkingBlock
-                content={msg.thinking}
-                isStreaming={isLoading && isLastMessage(i) && msg.content === ''}
-              />
-            )}
-            {msg.content !== '' && (
-              <div className={`chat-message chat-message-${msg.role}`}>
-                {msg.role === 'assistant' ? (
-                  <div
-                    className="chat-message-content chat-message-markdown"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}
-                  />
-                ) : (
-                  <div className="chat-message-content">
-                    {msg.content}
-                  </div>
-                )}
-                {isLoading && isLastMessage(i) && msg.role === 'assistant' && (
-                  <span className="chat-cursor" />
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+        {emptyState}
+        {messageItems}
         <div ref={messagesEndRef} />
       </div>
 
@@ -201,7 +246,7 @@ export default function ChatPage({ conversationId: conversationIdStr }) {
           rows={1}
           autoFocus
         />
-        <Button type="submit" variant="primary" isDisabled={!input.trim() || isLoading} isLoading={isLoading}>
+        <Button type="submit" variant="primary" isDisabled={isSendDisabled} isLoading={isLoading}>
           Send
         </Button>
       </form>

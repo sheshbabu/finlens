@@ -45,7 +45,7 @@ export default function ChatHistorySidebar() {
     }
   }
 
-  async function handleNew() {
+  async function handleNewClick() {
     navigateTo('/chat');
   }
 
@@ -71,33 +71,42 @@ export default function ChatHistorySidebar() {
 
   const activeId = getActiveId();
 
+  let emptyState = null;
+  if (conversations.length === 0) {
+    emptyState = <div className="chat-history-empty">No conversations yet</div>;
+  }
+
+  const conversationItems = conversations.map((conv) => {
+    const isActive = activeId === conv.conversation_id;
+    const itemClassName = isActive === true ? 'chat-history-item is-active' : 'chat-history-item';
+    return (
+      <div
+        key={conv.conversation_id}
+        className={itemClassName}
+        onClick={() => navigateTo(`/chat/${conv.conversation_id}`)}
+      >
+        <span className="chat-history-title">{conv.title}</span>
+        <IconButton
+          className="chat-history-delete"
+          onClick={(e) => handleDelete(e, conv.conversation_id)}
+          title="Delete"
+        >
+          <TrashIcon />
+        </IconButton>
+      </div>
+    );
+  });
+
   return (
     <div className="chat-history-sidebar">
       <div className="chat-history-header">
-        <Button className="chat-history-new-btn" onClick={handleNew}>
+        <Button className="chat-history-new-btn" onClick={handleNewClick}>
           + New chat
         </Button>
       </div>
       <div className="chat-history-list">
-        {conversations.length === 0 && (
-          <div className="chat-history-empty">No conversations yet</div>
-        )}
-        {conversations.map((conv) => (
-          <div
-            key={conv.conversation_id}
-            className={`chat-history-item${activeId === conv.conversation_id ? ' is-active' : ''}`}
-            onClick={() => navigateTo(`/chat/${conv.conversation_id}`)}
-          >
-            <span className="chat-history-title">{conv.title}</span>
-            <IconButton
-              className="chat-history-delete"
-              onClick={(e) => handleDelete(e, conv.conversation_id)}
-              title="Delete"
-            >
-              <TrashIcon />
-            </IconButton>
-          </div>
-        ))}
+        {emptyState}
+        {conversationItems}
       </div>
     </div>
   );

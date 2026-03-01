@@ -160,7 +160,6 @@ async fn chat(
     state: tauri::State<'_, DbState>,
     conversation_id: i64,
 ) -> Result<(), String> {
-    // Load full conversation history for context
     let history: Vec<OllamaMessage> = {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
@@ -231,7 +230,6 @@ async fn chat(
         }
     }
 
-    // Persist assistant reply
     {
         let conn = state.0.lock().map_err(|e| e.to_string())?;
         conn.execute(

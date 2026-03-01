@@ -2,21 +2,22 @@ import { LoadingSpinner } from './Icon.jsx';
 import './Button.css';
 
 export default function Button({ children, variant = '', type = 'button', isDisabled = false, isLoading = false, onClick, className = '', ...props }) {
-  const disabled = isDisabled || isLoading;
-  const buttonClasses = ["button", variant, className, disabled ? 'disabled' : ''].filter(Boolean).join(" ");
+  const isActuallyDisabled = isDisabled === true || isLoading === true;
+  const disabledClass = isActuallyDisabled === true ? 'disabled' : '';
+  const buttonClasses = ["button", variant, className, disabledClass].filter(Boolean).join(" ");
 
   function handleClick(e) {
-    if (disabled) {
+    if (isActuallyDisabled === true) {
       e.preventDefault();
       return;
     }
-    if (onClick) {
+    if (onClick !== undefined) {
       onClick(e);
     }
   }
 
   let content = children;
-  if (isLoading) {
+  if (isLoading === true) {
     content = (
       <>
         <LoadingSpinner size={16} />
@@ -26,8 +27,9 @@ export default function Button({ children, variant = '', type = 'button', isDisa
   }
 
   if (variant === 'ghost') {
+    const ghostClasses = ['ghost-button', className, disabledClass].filter(Boolean).join(' ');
     return (
-      <div className={`ghost-button ${className} ${disabled ? 'disabled' : ''}`} onClick={handleClick} disabled={disabled} {...props}>
+      <div className={ghostClasses} onClick={handleClick} disabled={isActuallyDisabled} {...props}>
         {content}
       </div>
     );
@@ -35,14 +37,14 @@ export default function Button({ children, variant = '', type = 'button', isDisa
 
   if (type === 'submit') {
     return (
-      <button type={type} className={buttonClasses} disabled={disabled} onClick={handleClick} {...props}>
+      <button type={type} className={buttonClasses} disabled={isActuallyDisabled} onClick={handleClick} {...props}>
         {content}
       </button>
     );
   }
 
   return (
-    <div className={buttonClasses} disabled={disabled} onClick={handleClick} {...props}>
+    <div className={buttonClasses} disabled={isActuallyDisabled} onClick={handleClick} {...props}>
       {content}
     </div>
   );
